@@ -37,8 +37,8 @@ void setup() {
 
 // the loop function runs over and over again forever
 void loop() {
-  eraseALL();
-  delay(1000);
+  //eraseALL();
+  //delay(1000);
   printContents();
   while(1);         
 }
@@ -147,9 +147,9 @@ void eraseALL() {
   Serial.println("Erasing EEPROM");
   setWrite();
   for (unsigned int address = 0; address < 32768; address += 1) {
-    writeEEPROM(address, 0xaa);
+    writeEEPROM(address, 0xff);
     if ((address+1) % 128 == 0) {
-      Serial.println(address);
+      Serial.println((String)((float)(address+1) / 32767 * 100) + "%");
     }
   }
   Serial.println(" done");
