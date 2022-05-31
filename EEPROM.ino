@@ -12,10 +12,11 @@ const unsigned int dataPin[] = { 7, 5, 3, 2, 4, 6, 8, 10 };
 int addressPin[] = { 9, 11, 14, 16, 19, 23, 25, 29, 31, 27, 15, 21, 43, 41, 40 };
 int addressSize = 15;
 const unsigned int WCT = 10;
-
+int maxAddress = 0;
 const boolean logData = false;
-
-
+byte data[] = {0xAB, 0x5E, 0x6F, 0xB4, 0xEC, 0x88, 0x25, 0x3D, 
+               0xC0, 0x12, 0x55, 0x79, 0xBC, 0xAA, 0x11, 0x99};
+int size = 0;
 
 void setup() {
   Serial.begin(115200); 
@@ -24,7 +25,10 @@ void setup() {
     pinMode(addressPin[pin], OUTPUT);
     if (logData) Serial.println("pinMode(" + (String)(addressPin[pin]) + ",OUTPUT)");
   }
-
+  
+  maxAddress = (int)pow(2, addressSize);
+  size = sizeof(data)/sizeof(data[0]);
+  
   pinMode(OE, OUTPUT);
   pinMode(WE, OUTPUT);
   pinMode(CE, OUTPUT);
@@ -37,10 +41,21 @@ void setup() {
 
 // the loop function runs over and over again forever
 void loop() {
-  //eraseALL();
-  //delay(1000);
-  printContents();
-  while(1);         
+
+  // writeByte(0x5555, 0xaa);
+  // writeByte(0x2aaa, 0x55);
+  // writeByte(0x5555, 0x80);
+  // writeByte(0x5555, 0xaa);
+  // writeByte(0x2aaa, 0x55);
+  // writeByte(0x5555, 0x20);
+
+  //writeByte(0x0000, 0x20);
+  //erase(0x0000, 0x7fff, 0x00);
+  printContents(0x0000, 0x7fff);
+  //write(0x0000, data);
+  //printContents(0x0000, 0x0020);
+  delay(500);
+  while(1);    
 }
 
 void setRead() {
@@ -123,12 +138,12 @@ String toBinary(int n, int len)
 
 
 
-void printContents() {
+void printContents(unsigned int startAddress, unsigned int endAddress ) {
   Serial.println("Reading EEPROM Max addresses: " + (String)((int)pow(2, addressSize)));
   Serial.println();
   setRead();
 
-  for (unsigned int base = 0; base < 32768; base += 16) {
+  for (unsigned int base = startAddress; base < endAddress; base += 16) {
     uint16_t data[16];
     for (int offset = 0; offset <= 15; offset += 1) {
       data[offset] = readEEPROM(base + offset);
@@ -143,15 +158,38 @@ void printContents() {
   setStandby();
 }
 
-void eraseALL() {
+void erase(unsigned int startAddress, unsigned int endAddress, uint8_t data) {
   Serial.println("Erasing EEPROM");
   setWrite();
-  for (unsigned int address = 0; address < 32768; address += 1) {
-    writeEEPROM(address, 0xff);
+  for (unsigned int address = startAddress; address <= endAddress; address += 1) {
+    writeEEPROM(address, data);
     if ((address+1) % 128 == 0) {
-      Serial.println((String)((float)(address+1) / 32767 * 100) + "%");
+      Serial.println((String)((float)(address+1) / endAddress * 100) + "%");
     }
   }
+  Serial.println(" done");
+  setStandby();
+}
+
+void writeByte(unsigned int startAddress, byte data) {
+  Serial.println("Writing EEPROM");
+  setWrite();
+  writeEEPROM(startAddress, data);
+  Serial.println(" done");
+  setStandby();
+}
+
+void write(unsigned int startAddress, byte data[]) {
+  Serial.println("Writing EEPROM");
+  setWrite();
+
+  for (unsigned int a = 0; a < size; a = a + 1)
+  {
+    if (a % 128 == 0) {
+      Serial.println((String)((float)(startAddress + a) / (startAddress + size) * 100) + "%");
+    }
+    writeEEPROM(startAddress + a, data[a]);
+  } 
   Serial.println(" done");
   setStandby();
 }
