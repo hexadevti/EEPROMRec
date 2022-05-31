@@ -4,12 +4,12 @@
 
 #include <string.h>
 
-int CE = 19;
-int OE = 21;
-int WE = 23;
+int CE = 12;
+int OE = 17;
+int WE = 44;
 
-const unsigned int dataPin[] = { 40, 42, 44, 46, 41, 43, 45, 47 };
-int addressPin[] = { 16, 14, 12, 10, 8,  6,  4,  2 , 17, 15, 11, 9, 7, 5, 3 };
+const unsigned int dataPin[] = { 7, 5, 3, 2, 4, 6, 8, 10 };
+int addressPin[] = { 9, 11, 14, 16, 19, 23, 25, 29, 31, 27, 15, 21, 43, 41, 40 };
 int addressSize = 15;
 const unsigned int WCT = 10;
 
