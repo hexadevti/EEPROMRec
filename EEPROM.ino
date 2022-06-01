@@ -20,11 +20,6 @@ int size = 0;
 
 void setup() {
   Serial.begin(115200); 
-
-  for (unsigned int pin = 0; pin < addressSize; pin+=1) {
-    pinMode(addressPin[pin], OUTPUT);
-    if (logData) Serial.println("pinMode(" + (String)(addressPin[pin]) + ",OUTPUT)");
-  }
   
   maxAddress = (int)pow(2, addressSize);
   size = sizeof(data)/sizeof(data[0]);
@@ -42,19 +37,17 @@ void setup() {
 // the loop function runs over and over again forever
 void loop() {
 
-  // writeByte(0x5555, 0xaa);
-  // writeByte(0x2aaa, 0x55);
-  // writeByte(0x5555, 0x80);
-  // writeByte(0x5555, 0xaa);
-  // writeByte(0x2aaa, 0x55);
-  // writeByte(0x5555, 0x20);
 
-  //writeByte(0x0000, 0x20);
-  //erase(0x0000, 0x7fff, 0x00);
-  printContents(0x0000, 0x7fff);
+  //writeByte(0x0000, 0x40);
+  //Serial.println(readByte(0x0000), HEX);
+  //writeByte(0x0000, 0x30);
+  //erase(0x00e0, 0x00ff, 0x00);
+  printContents(0x0000, 0x00ff);
   //write(0x0000, data);
-  //printContents(0x0000, 0x0020);
-  delay(500);
+  //printContents(0x0000, 0x0001);
+  //Serial.println(readByte(0x0000), HEX);
+
+  //delay(500);
   while(1);    
 }
 
@@ -74,7 +67,7 @@ void setWrite() {
   digitalWrite(WE, HIGH);
   digitalWrite(CE, LOW);
   digitalWrite(OE, HIGH);
-  for (unsigned int pin = 0; pin <= 7; pin+=1) {
+  for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], OUTPUT);
   }
   delay(WCT);
@@ -85,15 +78,21 @@ void setStandby() {
   digitalWrite(WE, HIGH);
   digitalWrite(CE, HIGH);
   digitalWrite(OE, HIGH);
-  for (unsigned int pin = 0; pin <= addressSize - 1; pin+=1) {
+  for (unsigned int pin = 0; pin < addressSize; pin+=1) {
     digitalWrite(addressPin[pin], LOW);
   }
   digitalWrite(LED_BUILTIN, LOW);
   delay(WCT);
 }
 
-void setAddress(unsigned int address) {
+void setAddress(int address) {
   if (logData) Serial.println("address: " + toBinary(address, 8));
+
+  for (unsigned int pin = 0; pin < addressSize; pin+=1) {
+    pinMode(addressPin[pin], OUTPUT);
+    if (logData) Serial.println("pinMode(" + (String)(addressPin[pin]) + ",OUTPUT)");
+  }
+  
   String binary;
   for (int i = 0; i < addressSize; i++) {
     digitalWrite(addressPin[i], (address & 1) == 1 ? HIGH : LOW);
@@ -102,7 +101,10 @@ void setAddress(unsigned int address) {
   }
 }
 
-uint8_t readEEPROM(unsigned int address) {
+uint8_t readEEPROM(int address) {
+  for (int pin = 0; pin < 8; pin+=1) {
+    pinMode(dataPin[pin], INPUT);
+  }
   setAddress(address);
   uint8_t data = 0;
   for (int pin = 7; pin >= 0; pin -= 1) {
@@ -172,10 +174,14 @@ void erase(unsigned int startAddress, unsigned int endAddress, uint8_t data) {
 }
 
 void writeByte(unsigned int startAddress, byte data) {
-  Serial.println("Writing EEPROM");
   setWrite();
   writeEEPROM(startAddress, data);
-  Serial.println(" done");
+  setStandby();
+}
+
+uint8_t readByte(unsigned int startAddress) {
+  setRead();
+  return readEEPROM(startAddress);
   setStandby();
 }
 
