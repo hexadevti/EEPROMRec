@@ -17,6 +17,12 @@ const boolean logData = false;
 byte data[] = {0xAB, 0x5E, 0x6F, 0xB4, 0xEC, 0x88, 0x25, 0x3D, 
                0xC0, 0x12, 0x55, 0x79, 0xBC, 0xAA, 0x11, 0x99};
 int size = 0;
+int listCount = 0;
+
+int StringCount = 0;
+
+
+String command;
 
 void setup() {
   Serial.begin(115200); 
@@ -32,24 +38,118 @@ void setup() {
   digitalWrite(OE, HIGH);
   digitalWrite(WE, HIGH);
   digitalWrite(CE, HIGH);
+
 }
 
 // the loop function runs over and over again forever
 void loop() {
 
+  if (Serial.available()) {
+    command = Serial.readStringUntil('\n');
+    command.trim();
+    command.toLowerCase();
+    if (command.startsWith("read")) {
+      unsigned int parmNo = 0;
+      unsigned int startAddress = 0; 
+      unsigned int endAddress = 0; 
+      unsigned int itemCount = 1;
+      char buf[60];
+    
+      while (command.length() > 0)
+      {
+        int index = command.indexOf(' ');
+        String parm = command.substring(0, index);
 
-  //writeByte(0x0000, 0x40);
-  //Serial.println(readByte(0x0000), HEX);
-  //writeByte(0x0000, 0x30);
-  //erase(0x00e0, 0x00ff, 0x00);
-  printContents(0x0000, 0x00ff);
-  //write(0x0000, data);
-  //printContents(0x0000, 0x0001);
-  //Serial.println(readByte(0x0000), HEX);
+        if (parmNo == 1)
+        {
+            setRead();
+            startAddress = StrToDec(parm);
+        }
+        else if (parmNo == 2)
+        {
+            endAddress = StrToDec(parm);
+        }
+        else {
+          if (index == -1) {
+            for (unsigned int i = startAddress; i <= endAddress; i++) {
+              if (itemCount == 1) {
+                sprintf(buf, "%04x: ", i); Serial.print(buf);
+              } else if (itemCount == 9) {
+                 Serial.print("    ");
+              } 
+              sprintf(buf, "%02x ", readEEPROM(i)); Serial.print(buf);
+              if (itemCount == 16) {
+                Serial.println();
+                itemCount = 0;
+              }
+              itemCount++;
+            }
+            setStandby();
+            break;
+          }
+        }
+        command = command.substring(index+1);
+        parmNo = parmNo + 1;
+      }
+      
+    } 
+    else if (command.startsWith("write")) {
+      unsigned int parmNo = 0;
+      unsigned int address = 0; 
+      unsigned int itemCount = 1;
+      char buf[60];
+    
+      while (command.length() > 0)
+      {
+        //Serial.println("parmNo: " + (String)parmNo);
+        int index = command.indexOf(' ');
+        String parm = command.substring(0, index);
 
-  //delay(500);
-  while(1);    
+        if (parmNo == 1)
+        {
+            address = StrToDec(parm);
+            Serial.println(); 
+            sprintf(buf, "%04x: ", address); Serial.print(buf);
+        }
+        else if (parmNo > 1) {
+          int data = StrToDec(parm);
+          writeByte(address + (parmNo - 2), data);
+          sprintf(buf, "%02x ", data); Serial.print(buf);
+          
+          if (itemCount == 8) {
+            Serial.print("   ");
+          }
+          if (itemCount == 16) {
+            Serial.println(); 
+            sprintf(buf, "%04x: ", address + (parmNo - 2)); Serial.print(buf);
+            itemCount = 0;
+          }
+          itemCount++;
+
+          if (index == -1) {
+            
+            Serial.println();
+            break;
+          }
+        }
+        command = command.substring(index+1);
+        parmNo = parmNo + 1;
+      }
+
+      
+      
+    }
+  }
 }
+
+
+int StrToDec(String parm) {
+  int str_len = parm.length() + 1; 
+  char char_array[str_len];
+  parm.toCharArray(char_array, str_len);
+  return (int) strtol(char_array, 0, 16);
+}
+
 
 void setRead() {
   digitalWrite(LED_BUILTIN, HIGH);
@@ -179,9 +279,9 @@ void writeByte(unsigned int startAddress, byte data) {
   setStandby();
 }
 
-uint8_t readByte(unsigned int startAddress) {
+uint8_t readByte(unsigned int address) {
   setRead();
-  return readEEPROM(startAddress);
+  return readEEPROM(address);
   setStandby();
 }
 
