@@ -51,40 +51,41 @@ void loop() {
     command = Serial.readStringUntil('\n');
     command.trim();
     command.toLowerCase();
-    if (command.startsWith("go")) {
-      commandGo();
-    }
-    if (command.startsWith("clear")) {
+    if (command.startsWith("g ")) {
+      commandGo(command);
+    } else if (command.startsWith("c ")) {
       commandClear(command);
     }
-    if (command.equals("l")) {
-      commandRead("read");
+    else if (command.equals("l")) {
+      commandRead("r");
       currentAddress = currentAddress+256;
-    }
-    if (command.equals("pos")) {
+    } else if (command.equals("p ")) {
       char buf[60];
       sprintf(buf, "%04x", currentAddress);
       Serial.println("");
       Serial.print(buf);
       Serial.println("");
       Serial.println("OK");
-    }
-    if (command.startsWith("read")) {
+    } else if (command.startsWith("r ")) {
       commandRead(command);
     } 
-    else if (command.startsWith("write")) {
+    else if (command.startsWith("w ")) {
       commandWrite(command);
+    }
+    else 
+    {
+      commandGo("g " + command);
     }
   }
 }
 
-void commandGo()
+void commandGo(String strCommand)
 {
   unsigned int parmNo = 0;
-  while (command.length() > 0)
+  while (strCommand.length() > 0)
   {
-    int index = command.indexOf(' ');
-    String parm = command.substring(0, index);
+    int index = strCommand.indexOf(' ');
+    String parm = strCommand.substring(0, index);
     if (parmNo == 1)
     {
       currentAddress = StrToDec(parm);
@@ -92,7 +93,7 @@ void commandGo()
       Serial.println("OK");
       break;
     }
-    command = command.substring(index + 1);
+    strCommand = strCommand.substring(index + 1);
     parmNo = parmNo + 1;
   }
 }
@@ -142,7 +143,7 @@ void commandRead(String strCommand)
     int index = strCommand.indexOf(' ');
     String parm = strCommand.substring(0, index);
 
-    if (strCommand.equals("read"))
+    if (strCommand.equals("r"))
     {
       setRead();
       startAddress = currentAddress;
