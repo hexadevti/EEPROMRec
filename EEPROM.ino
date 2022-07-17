@@ -13,27 +13,34 @@
 int CLK_INPUT = 18; // Pino de interrupt de Clock
 int CPU_IORQ = 19; // Pino de interrupt de IORQ
 int CPU_WR = 20; // Pino Interrupt de Write Request
+int FREE_INTERRUPT = 21; // Pino Interrupt de Write Request
+int TX3 = 14; // Usado apesar de não referenciado em código
+int RX3 = 15; // Usado apesar de não referenciado em código
+int TX2 = 16; // Livre para uso
+int RX2 = 17; // Livre para uso
 
+int TIMER_ACTIVE = 22; // Ativa o Run - Botão central
+int CPU_RESET = 23; // Controla o Reset do processador
+int CLK_DISABLE = 24; // Controla clock na placa de clock
+int MEM_WE = 25; // Controla o Write Enable da EEPROM
+int WRITE_AVAILABLE = 26; //disponibiliza gravação na EEPROM
+int CPU_BUSREQ = 27; // Valida o bus para seguir processamento
 
+const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
+const unsigned int addressPin[] = { 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
 
-int WRITE_AVAILABLE = 49; //disponibiliza gravação na EEPROM
-int CLK_DISABLE = 51; // Controla clock na placa de clock
-int CPU_MREQ = 37;
-int CPU_RD = 38;
-int CPU_M1 = 39;
-int CPU_RFSH = 41;
-int CPU_HALT = 42;
-int CPU_BUSAK = 44;
-int MEM_WE = 50;
-int CPU_RESET = 52;
+//int CPU_MREQ = 37;
+//int CPU_RD = 38;
+//int CPU_M1 = 39;
+//int CPU_RFSH = 41;
+//int CPU_HALT = 42;
+//int CPU_BUSAK = 44;
 // int I2C_SDA = 20;
 // int I2C_SCL = 21;
 // int SPI_SS = 53;
 // int SPI_MISO = 50;
 // int SPI_MOSI = 51;
 // int SPI_SCK = 52;
-int CPU_BUSREQ = 48;
-int TIMER_ACTIVE = 53;
 
 bool timerActive = false;
 int timerButtonPressCount = 0;
@@ -44,8 +51,6 @@ bool timerPreviousState = false;
 // Hello World 3e 00 ee 80 d3 ff 18 fa
 // Vai e vem 3e 80 d3 ff 0f fe 01 28 02 18 f7 d3 ff 07 fe 80 28 f0 18 f7
 
-const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
-const unsigned int addressPin[] = { 45, 11, 12, 13, 16, 17, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
 int addressSize = 16;
 int currentAddress = 0;
 const unsigned int WCT = 10;
@@ -86,11 +91,11 @@ void initialState() {
   }
   
   pinMode(WRITE_AVAILABLE, OUTPUT);
-  pinMode(CPU_MREQ, INPUT);
-  pinMode(CPU_RD, INPUT);
-  pinMode(CPU_M1, INPUT);
-  pinMode(CPU_RFSH, INPUT);
-  pinMode(CPU_HALT, INPUT);
+  // pinMode(CPU_MREQ, INPUT);
+  // pinMode(CPU_RD, INPUT);
+  // pinMode(CPU_M1, INPUT);
+  // pinMode(CPU_RFSH, INPUT);
+  // pinMode(CPU_HALT, INPUT);
   pinMode(CPU_IORQ, INPUT);
   pinMode(CPU_WR, INPUT_PULLUP);
   pinMode(CLK_DISABLE, OUTPUT);
@@ -98,7 +103,7 @@ void initialState() {
   pinMode(MEM_WE, OUTPUT);
   pinMode(CPU_RESET, OUTPUT);
   pinMode(CPU_BUSREQ, OUTPUT);
-  pinMode(CPU_BUSAK, INPUT);
+  //pinMode(CPU_BUSAK, INPUT);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
@@ -533,7 +538,8 @@ void clockDebug() {
     Serial.print("   "); 
   }
   //Serial.print(clockCount, 0);
-  sprintf(buf, " %s %04X %02X %s %s %s %s %s %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH",  digitalRead(CPU_IORQ) ? "     " : " IORQ", digitalRead(CPU_HALT) ? "     " : " HALT");
+  sprintf(buf, " %s %04X %02X %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_IORQ) ? "     " : " IORQ");
+  //sprintf(buf, " %s %04X %02X %s %s %s %s %s %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH",  digitalRead(CPU_IORQ) ? "     " : " IORQ", digitalRead(CPU_HALT) ? "     " : " HALT");
   //sprintf(buf, "%s %04x %02x ", digitalRead(MEM_WE) ? "R" : "W", address, data);
   Serial.println(buf);
   if (!digitalRead(MEM_WE) && address >= 0x8000 && address < 0xa580) {
