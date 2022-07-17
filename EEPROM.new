@@ -9,31 +9,32 @@
 #include <SPI.h>
 
 
-//Pinos Fixos
-int CLK_INPUT = 18; // Pino de interrupt de Clock
-int CPU_IORQ = 19; // Pino de interrupt de IORQ
-int CPU_WR = 20; // Pino Interrupt de Write Request
+int WRITE_AVAILABLE = 34;
+int CLK_INPUT = 18; //
+int CLK_DISABLE = 40;
 
 
-
-int WRITE_AVAILABLE = 49; //disponibiliza gravação na EEPROM
-int CLK_DISABLE = 51; // Controla clock na placa de clock
 int CPU_MREQ = 37;
 int CPU_RD = 38;
 int CPU_M1 = 39;
 int CPU_RFSH = 41;
 int CPU_HALT = 42;
+int CPU_IORQ = 19;
 int CPU_BUSAK = 44;
-int MEM_WE = 50;
-int CPU_RESET = 52;
+
+int CPU_WR = 20;
+int MEM_OE = 35;
+int MEM_WE = 36;
+int CPU_RESET = 43;
 // int I2C_SDA = 20;
 // int I2C_SCL = 21;
-// int SPI_SS = 53;
-// int SPI_MISO = 50;
-// int SPI_MOSI = 51;
-// int SPI_SCK = 52;
-int CPU_BUSREQ = 48;
-int TIMER_ACTIVE = 53;
+int SPI_SS = 53;
+int SPI_MISO = 50;
+int SPI_MOSI = 51;
+int SPI_SCK = 52;
+int CPU_BUSREQ = 33;
+int TIMER_OUT = 46;
+int TIMER_ACTIVE = 47;
 
 bool timerActive = false;
 int timerButtonPressCount = 0;
@@ -44,7 +45,7 @@ bool timerPreviousState = false;
 // Hello World 3e 00 ee 80 d3 ff 18 fa
 // Vai e vem 3e 80 d3 ff 0f fe 01 28 02 18 f7 d3 ff 07 fe 80 28 f0 18 f7
 
-const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
+const unsigned int dataPin[] = { 3, 2, 5, 8, 44, 7, 6, 4 };
 const unsigned int addressPin[] = { 45, 11, 12, 13, 16, 17, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
 int addressSize = 16;
 int currentAddress = 0;
@@ -66,7 +67,7 @@ uint8_t bufb[80];
 // https://github.com/smaffer/espvgax2
 String command;
 
-//SPISettings settings(16000000, MSBFIRST, SPI_MODE0); 
+SPISettings settings(16000000, MSBFIRST, SPI_MODE0); 
 
 bool mem_read = false;
 
@@ -95,18 +96,27 @@ void initialState() {
   pinMode(CPU_WR, INPUT_PULLUP);
   pinMode(CLK_DISABLE, OUTPUT);
   pinMode(CLK_INPUT, INPUT);
+  pinMode(MEM_OE, OUTPUT);
   pinMode(MEM_WE, OUTPUT);
   pinMode(CPU_RESET, OUTPUT);
   pinMode(CPU_BUSREQ, OUTPUT);
+  pinMode(TIMER_ACTIVE, INPUT);
   pinMode(CPU_BUSAK, INPUT);
+
+  digitalWrite(MEM_OE, HIGH);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
   digitalWrite(CPU_RESET, HIGH);
   digitalWrite(CPU_BUSREQ, HIGH);
+  
 
   detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
   detachInterrupt(digitalPinToInterrupt(CPU_WR));
+
+  Timer1.initialize(10);
+  Timer1.attachInterrupt(timerLoop);
+  Timer1.stop();
   
   Serial.println("OK");
 }
@@ -138,28 +148,40 @@ void loop() {
     else if (command.startsWith("w ")) {
       commandWrite(command);
     }
+    else if (command.startsWith("wa")) {
+      CommandWriteActivate();
+    }
+    else if (command.startsWith("wd")) {
+      CommandWriteDeactivate();
+    }
     else if (command.startsWith("ru")) {
       CommandRun();
+    }
+    else if (command.startsWith("ram")) {
+      LoopVideoRAM;
     }
     else if (command.startsWith("rom")) {
       LoopVideoROM();
     }
-    // else if (command.startsWith("spi")) {
-    //   preRun();
-    //   digitalWrite(SPI_SS, HIGH);
-    //   SPI.begin();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoopSpi, FALLING);
-    //   reset();
-    //   clockCount = 0;
+    else if (command.startsWith("mf")) {
+      LoopVideoMemoryFast();
+    }
+    else if (command.startsWith("spi")) {
+      preRun();
+      digitalWrite(SPI_SS, HIGH);
+      SPI.begin();
+      attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoopSpi, FALLING);
+      reset();
+      clockCount = 0;
       
-    // }
-    // else if (command.startsWith("vi")) {
-    //   preRun();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockVideo, FALLING);
-    //   reset();
-    //   clockCount = 0;
-    //   addressCount = 0x8000; 
-    // }
+    }
+    else if (command.startsWith("vi")) {
+      preRun();
+      attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockVideo, FALLING);
+      reset();
+      clockCount = 0;
+      addressCount = 0x8000; 
+    }
     else if (command.startsWith("de")) {
       preRun();
       attachInterrupt(digitalPinToInterrupt(CLK_INPUT), clockDebug, RISING);
@@ -199,8 +221,15 @@ void loop() {
   }
 }
 
+void timerLoop() {
+  digitalWrite(TIMER_OUT, HIGH);
+  digitalWrite(TIMER_OUT, LOW);
+  clockLoop();
+}
+
 void CommandRun() {
       preRun();
+      Timer1.start();
       attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoop, FALLING);
       reset();
 }
@@ -213,11 +242,49 @@ void commandStop() {
 
       digitalWrite(CLK_DISABLE, HIGH);
       pinMode(MEM_WE, OUTPUT);
+      pinMode(MEM_OE, OUTPUT);
       detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
       detachInterrupt(digitalPinToInterrupt(CPU_WR));
       detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
+      Timer1.stop();
 }
 
+void LoopVideoMemoryFast() {
+     PORTC = PORTC & (~B00000100); // desabilita 34 C3
+
+      for (size_t i = 0; i < 9600; i++)
+      {
+        uint16_t address = 0x8000 + i;
+        setReadFast();
+        uint8_t data = readEEPROMFast(0x8000 + i);
+        bufb[1] = address & 0xff;
+        bufb[0] = (address >> 8);
+        bufb[2] = data;
+        sprintf(buf, "%04x%02x",(0x0f80 + i), bufb[2]);
+        Serial.println(buf);
+        Serial3.write(bufb, 3);
+      }
+      PORTC = PORTC | B00000100; // Habilita 34 C3
+}
+
+void LoopVideoRAM() {
+     digitalWrite(WRITE_AVAILABLE, LOW); // Desabilita a gravação (Invertido) 34 = C3 = B00000100
+     
+
+      for (size_t i = 0; i < 9600; i++)
+      {
+        uint16_t address = 0x8000 + i;
+        setRead();
+        uint8_t data = readEEPROM(0x8000 + i);
+        bufb[1] = address & 0xff;
+        bufb[0] = (address >> 8);
+        bufb[2] = data;
+        // sprintf(buf, "%04x%02x",(0x0f80 + i), bufb[2]);
+        // Serial.println(buf);
+        Serial3.write(bufb, 3);
+      }
+      digitalWrite(WRITE_AVAILABLE, HIGH); 
+}
 
 
 void LoopVideoROM() {
@@ -434,6 +501,19 @@ void commandLoad(String command) {
   }
 }
 
+
+void CommandWriteActivate() {
+  digitalWrite(WRITE_AVAILABLE, HIGH);
+  Serial.println("Write Activated");
+  Serial.println("OK");
+}
+
+void CommandWriteDeactivate() {
+  digitalWrite(WRITE_AVAILABLE, LOW);
+  Serial.println("Write Deactivated");
+  Serial.println("OK");
+}
+
 int StrToDec(String parm) {
   int str_len = parm.length() + 1; 
   char char_array[str_len];
@@ -465,38 +545,38 @@ void clockLoop() {
 // int countScreen = 0;
 // int countAddress = 0;
 
-// void clockLoopSpi() {
-//     digitalWrite(SPI_SS, LOW);
-//     uint16_t address = readAddress();
-//     // uint16_t address = 0x8000 + countAddress; 
-//     // if (address == 0x8000) countScreen = countScreen + 1;
-//     uint8_t data = readData();
-//     bufb[1] = address & 0xff;
-//     bufb[0] = (address >> 8);
-//     bufb[2] = data;
-//     SPI.beginTransaction(settings);
-//     SPI.transfer(bufb, 3);
-//     SPI.endTransaction();  
-//     digitalWrite(SPI_SS, HIGH);
-//     // countAddress++;
-//     // if (countAddress > 0x2580) 
-//     //   countAddress = 0; 
-// }
+void clockLoopSpi() {
+    digitalWrite(SPI_SS, LOW);
+    uint16_t address = readAddress();
+    // uint16_t address = 0x8000 + countAddress; 
+    // if (address == 0x8000) countScreen = countScreen + 1;
+    uint8_t data = readData();
+    bufb[1] = address & 0xff;
+    bufb[0] = (address >> 8);
+    bufb[2] = data;
+    SPI.beginTransaction(settings);
+    SPI.transfer(bufb, 3);
+    SPI.endTransaction();  
+    digitalWrite(SPI_SS, HIGH);
+    // countAddress++;
+    // if (countAddress > 0x2580) 
+    //   countAddress = 0; 
+}
 
 
 
-// void clockVideo() {
-//    uint8_t data = readData();
-//     //uint16_t address = readAddressBits(8);
+void clockVideo() {
+   uint8_t data = readData();
+    //uint16_t address = readAddressBits(8);
     
-// //    if (address == 0x2 && data != dataant) {
-//     //Serial.print(clockCount, 0);
-//     sprintf(buf, "%04x%02x",addressCount, data);
-//     Serial.println(buf);
-//     addressCount++;
-// //    dataant = data;
-// //    }
-// }
+//    if (address == 0x2 && data != dataant) {
+    //Serial.print(clockCount, 0);
+    sprintf(buf, "%04x%02x",addressCount, data);
+    Serial.println(buf);
+    addressCount++;
+//    dataant = data;
+//    }
+}
 
 void preRun() {
       for (int pin = 0; pin <= 15; pin+=1) {
@@ -506,6 +586,7 @@ void preRun() {
         pinMode(dataPin[pin], INPUT);
       }
       pinMode(MEM_WE, INPUT);
+      pinMode(MEM_OE, INPUT);
       digitalWrite(WRITE_AVAILABLE, LOW);
       digitalWrite(CLK_DISABLE, LOW);
 
@@ -557,6 +638,7 @@ void setRead() {
   //digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(MEM_WE, HIGH);
   //digitalWrite(CE, LOW);
+  digitalWrite(MEM_OE, LOW);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], INPUT);
   }
@@ -585,8 +667,11 @@ void setReadFast() {
 
 
 void setWrite() {
+  //digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, HIGH);
+  //digitalWrite(CE, LOW);
+  digitalWrite(MEM_OE, HIGH);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], OUTPUT);
   }

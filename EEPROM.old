@@ -9,31 +9,31 @@
 #include <SPI.h>
 
 
-//Pinos Fixos
-int CLK_INPUT = 18; // Pino de interrupt de Clock
-int CPU_IORQ = 19; // Pino de interrupt de IORQ
-int CPU_WR = 20; // Pino Interrupt de Write Request
+int WRITE_AVAILABLE = 34; //disponibiliza gravação na EEPROM
+int CLK_INPUT = 18; // Pino de entrada de clock
+int CLK_DISABLE = 40; // Controla clock na placa de clock
 
 
-
-int WRITE_AVAILABLE = 49; //disponibiliza gravação na EEPROM
-int CLK_DISABLE = 51; // Controla clock na placa de clock
 int CPU_MREQ = 37;
 int CPU_RD = 38;
 int CPU_M1 = 39;
 int CPU_RFSH = 41;
 int CPU_HALT = 42;
+int CPU_IORQ = 19;
 int CPU_BUSAK = 44;
-int MEM_WE = 50;
-int CPU_RESET = 52;
+
+int CPU_WR = 20;
+int MEM_OE = 35;
+int MEM_WE = 36;
+int CPU_RESET = 43;
 // int I2C_SDA = 20;
 // int I2C_SCL = 21;
-// int SPI_SS = 53;
-// int SPI_MISO = 50;
-// int SPI_MOSI = 51;
-// int SPI_SCK = 52;
-int CPU_BUSREQ = 48;
-int TIMER_ACTIVE = 53;
+int SPI_SS = 53;
+int SPI_MISO = 50;
+int SPI_MOSI = 51;
+int SPI_SCK = 52;
+int CPU_BUSREQ = 33;
+int TIMER_ACTIVE = 47;
 
 bool timerActive = false;
 int timerButtonPressCount = 0;
@@ -66,7 +66,7 @@ uint8_t bufb[80];
 // https://github.com/smaffer/espvgax2
 String command;
 
-//SPISettings settings(16000000, MSBFIRST, SPI_MODE0); 
+SPISettings settings(16000000, MSBFIRST, SPI_MODE0); 
 
 bool mem_read = false;
 
@@ -95,10 +95,13 @@ void initialState() {
   pinMode(CPU_WR, INPUT_PULLUP);
   pinMode(CLK_DISABLE, OUTPUT);
   pinMode(CLK_INPUT, INPUT);
+  pinMode(MEM_OE, OUTPUT);
   pinMode(MEM_WE, OUTPUT);
   pinMode(CPU_RESET, OUTPUT);
   pinMode(CPU_BUSREQ, OUTPUT);
   pinMode(CPU_BUSAK, INPUT);
+
+  digitalWrite(MEM_OE, HIGH);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
@@ -144,22 +147,22 @@ void loop() {
     else if (command.startsWith("rom")) {
       LoopVideoROM();
     }
-    // else if (command.startsWith("spi")) {
-    //   preRun();
-    //   digitalWrite(SPI_SS, HIGH);
-    //   SPI.begin();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoopSpi, FALLING);
-    //   reset();
-    //   clockCount = 0;
+    else if (command.startsWith("spi")) {
+      preRun();
+      digitalWrite(SPI_SS, HIGH);
+      SPI.begin();
+      attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoopSpi, FALLING);
+      reset();
+      clockCount = 0;
       
-    // }
-    // else if (command.startsWith("vi")) {
-    //   preRun();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockVideo, FALLING);
-    //   reset();
-    //   clockCount = 0;
-    //   addressCount = 0x8000; 
-    // }
+    }
+    else if (command.startsWith("vi")) {
+      preRun();
+      attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockVideo, FALLING);
+      reset();
+      clockCount = 0;
+      addressCount = 0x8000; 
+    }
     else if (command.startsWith("de")) {
       preRun();
       attachInterrupt(digitalPinToInterrupt(CLK_INPUT), clockDebug, RISING);
@@ -213,6 +216,7 @@ void commandStop() {
 
       digitalWrite(CLK_DISABLE, HIGH);
       pinMode(MEM_WE, OUTPUT);
+      pinMode(MEM_OE, OUTPUT);
       detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
       detachInterrupt(digitalPinToInterrupt(CPU_WR));
       detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
@@ -465,38 +469,38 @@ void clockLoop() {
 // int countScreen = 0;
 // int countAddress = 0;
 
-// void clockLoopSpi() {
-//     digitalWrite(SPI_SS, LOW);
-//     uint16_t address = readAddress();
-//     // uint16_t address = 0x8000 + countAddress; 
-//     // if (address == 0x8000) countScreen = countScreen + 1;
-//     uint8_t data = readData();
-//     bufb[1] = address & 0xff;
-//     bufb[0] = (address >> 8);
-//     bufb[2] = data;
-//     SPI.beginTransaction(settings);
-//     SPI.transfer(bufb, 3);
-//     SPI.endTransaction();  
-//     digitalWrite(SPI_SS, HIGH);
-//     // countAddress++;
-//     // if (countAddress > 0x2580) 
-//     //   countAddress = 0; 
-// }
+void clockLoopSpi() {
+    digitalWrite(SPI_SS, LOW);
+    uint16_t address = readAddress();
+    // uint16_t address = 0x8000 + countAddress; 
+    // if (address == 0x8000) countScreen = countScreen + 1;
+    uint8_t data = readData();
+    bufb[1] = address & 0xff;
+    bufb[0] = (address >> 8);
+    bufb[2] = data;
+    SPI.beginTransaction(settings);
+    SPI.transfer(bufb, 3);
+    SPI.endTransaction();  
+    digitalWrite(SPI_SS, HIGH);
+    // countAddress++;
+    // if (countAddress > 0x2580) 
+    //   countAddress = 0; 
+}
 
 
 
-// void clockVideo() {
-//    uint8_t data = readData();
-//     //uint16_t address = readAddressBits(8);
+void clockVideo() {
+   uint8_t data = readData();
+    //uint16_t address = readAddressBits(8);
     
-// //    if (address == 0x2 && data != dataant) {
-//     //Serial.print(clockCount, 0);
-//     sprintf(buf, "%04x%02x",addressCount, data);
-//     Serial.println(buf);
-//     addressCount++;
-// //    dataant = data;
-// //    }
-// }
+//    if (address == 0x2 && data != dataant) {
+    //Serial.print(clockCount, 0);
+    sprintf(buf, "%04x%02x",addressCount, data);
+    Serial.println(buf);
+    addressCount++;
+//    dataant = data;
+//    }
+}
 
 void preRun() {
       for (int pin = 0; pin <= 15; pin+=1) {
@@ -506,6 +510,7 @@ void preRun() {
         pinMode(dataPin[pin], INPUT);
       }
       pinMode(MEM_WE, INPUT);
+      pinMode(MEM_OE, INPUT);
       digitalWrite(WRITE_AVAILABLE, LOW);
       digitalWrite(CLK_DISABLE, LOW);
 
@@ -557,6 +562,7 @@ void setRead() {
   //digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(MEM_WE, HIGH);
   //digitalWrite(CE, LOW);
+  digitalWrite(MEM_OE, LOW);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], INPUT);
   }
@@ -585,8 +591,11 @@ void setReadFast() {
 
 
 void setWrite() {
+  //digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, HIGH);
+  //digitalWrite(CE, LOW);
+  digitalWrite(MEM_OE, HIGH);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], OUTPUT);
   }
