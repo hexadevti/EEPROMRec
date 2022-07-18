@@ -25,6 +25,7 @@ int CLK_DISABLE = 24; // Controla clock na placa de clock
 int MEM_WE = 25; // Controla o Write Enable da EEPROM
 int WRITE_AVAILABLE = 26; //disponibiliza gravação na EEPROM
 int CPU_BUSREQ = 27; // Valida o bus para seguir processamento
+int MEM_OE = 28; // Controla a leitura da memoria pelo gravador de EEPROM
 
 const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
 const unsigned int addressPin[] = { 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
@@ -103,12 +104,15 @@ void initialState() {
   pinMode(MEM_WE, OUTPUT);
   pinMode(CPU_RESET, OUTPUT);
   pinMode(CPU_BUSREQ, OUTPUT);
+  pinMode(MEM_OE, OUTPUT);
+
   //pinMode(CPU_BUSAK, INPUT);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
   digitalWrite(CPU_RESET, HIGH);
   digitalWrite(CPU_BUSREQ, HIGH);
+  digitalWrite(MEM_OE, HIGH);
 
   detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
   detachInterrupt(digitalPinToInterrupt(CPU_WR));
@@ -218,6 +222,7 @@ void commandStop() {
 
       digitalWrite(CLK_DISABLE, HIGH);
       pinMode(MEM_WE, OUTPUT);
+      pinMode(MEM_OE, OUTPUT);
       detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
       detachInterrupt(digitalPinToInterrupt(CPU_WR));
       detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
@@ -511,6 +516,7 @@ void preRun() {
         pinMode(dataPin[pin], INPUT);
       }
       pinMode(MEM_WE, INPUT);
+      pinMode(MEM_OE, INPUT);
       digitalWrite(WRITE_AVAILABLE, LOW);
       digitalWrite(CLK_DISABLE, LOW);
 
@@ -562,6 +568,8 @@ void clockCycleCount() {
 void setRead() {
   //digitalWrite(LED_BUILTIN, HIGH);
   digitalWrite(MEM_WE, HIGH);
+  pinMode(MEM_OE, OUTPUT);
+  digitalWrite(MEM_OE, LOW);
   //digitalWrite(CE, LOW);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], INPUT);
@@ -593,6 +601,8 @@ void setReadFast() {
 void setWrite() {
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, HIGH);
+  pinMode(MEM_OE, OUTPUT);
+  digitalWrite(MEM_OE, HIGH);
   for (unsigned int pin = 0; pin < 8; pin+=1) {
     pinMode(dataPin[pin], OUTPUT);
   }
