@@ -1,4 +1,4 @@
-#include <TimerOne.h>
+//#include <TimerOne.h>
 
 /*
   EEPROM reader
@@ -10,32 +10,34 @@
 
 
 //Pinos Fixos
-int CLK_INPUT = 18; // Pino de interrupt de Clock
-int CPU_IORQ = 19; // Pino de interrupt de IORQ
-int CPU_WR = 20; // Pino Interrupt de Write Request
+int CLK_INPUT = 20; // Pino de interrupt de Clock
+int CPU_IORQ = 21; // Pino de interrupt de IORQ
+int CPU_WR = 18; // Pino Interrupt de Write Request
 int FREE_INTERRUPT = 21; // Pino Interrupt de Write Request
 int TX3 = 14; // Usado apesar de não referenciado em código
 int RX3 = 15; // Usado apesar de não referenciado em código
 int TX2 = 16; // Livre para uso
 int RX2 = 17; // Livre para uso
 
-int TIMER_ACTIVE = 22; // Ativa o Run - Botão central
-int CPU_RESET = 23; // Controla o Reset do processador
-int CLK_DISABLE = 24; // Controla clock na placa de clock
+int TIMER_ACTIVE = 31; // Ativa o Run - Botão central
+int CLK_DISABLE = 30; // Controla clock na placa de clock
+int WRITE_AVAILABLE = 29; //disponibiliza gravação na EEPROM
+int CPU_RESET = 28; // Controla o Reset do processador
+int MEM_OE = 27; // Controla a leitura da memoria pelo gravador de EEPROM
+int CPU_BUSREQ = 26; // Valida o bus para seguir processamento
 int MEM_WE = 25; // Controla o Write Enable da EEPROM
-int WRITE_AVAILABLE = 26; //disponibiliza gravação na EEPROM
-int CPU_BUSREQ = 27; // Valida o bus para seguir processamento
-int MEM_OE = 28; // Controla a leitura da memoria pelo gravador de EEPROM
+int CPU_RD = 24;
 
 const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
 const unsigned int addressPin[] = { 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
 
-//int CPU_MREQ = 37;
-//int CPU_RD = 38;
-//int CPU_M1 = 39;
-//int CPU_RFSH = 41;
-//int CPU_HALT = 42;
-//int CPU_BUSAK = 44;
+int CPU_MREQ = 22;
+int CPU_M1 = 16;
+int CPU_RFSH = 17;
+int CPU_HALT = 12;
+int CPU_BUSAK = 23;
+
+
 // int I2C_SDA = 20;
 // int I2C_SCL = 21;
 // int SPI_SS = 53;
@@ -47,10 +49,10 @@ bool timerActive = false;
 int timerButtonPressCount = 0;
 bool timerPreviousState = false;
 
-
-
 // Hello World 3e 00 ee 80 d3 ff 18 fa
-// Vai e vem 3e 80 d3 ff 0f fe 01 28 02 18 f7 d3 ff 07 fe 80 28 f0 18 f7
+// Vai e vem 3e 80 d3 01 0f fe 01 28 02 18 f7 d3 01 07 fe 80 28 f0 18 f7
+// vai vem input 3E 80 D3 01 0F FE 01 28 08 DB 02 FE 01 28 02 18 F1 D3 01 07 FE 80 28 EA DB 02 FE 01 28 F3 18 F1
+
 
 int addressSize = 16;
 int currentAddress = 0;
@@ -77,7 +79,7 @@ String command;
 bool mem_read = false;
 
 void setup() {
-  Serial.begin(1000000); 
+  Serial.begin(250000); 
   Serial3.begin(1000000);
   
   maxAddress = (int)pow(2, addressSize);
@@ -91,12 +93,13 @@ void initialState() {
     pinMode(addressPin[pin], OUTPUT);
   }
   
+  pinMode(CPU_MREQ, INPUT);
+  pinMode(CPU_M1, INPUT);
+  pinMode(CPU_RFSH, INPUT);
+  pinMode(CPU_HALT, INPUT);
+  pinMode(CPU_BUSAK, INPUT);
+  pinMode(CPU_RD, INPUT);
   pinMode(WRITE_AVAILABLE, OUTPUT);
-  // pinMode(CPU_MREQ, INPUT);
-  // pinMode(CPU_RD, INPUT);
-  // pinMode(CPU_M1, INPUT);
-  // pinMode(CPU_RFSH, INPUT);
-  // pinMode(CPU_HALT, INPUT);
   pinMode(CPU_IORQ, INPUT);
   pinMode(CPU_WR, INPUT_PULLUP);
   pinMode(CLK_DISABLE, OUTPUT);
@@ -106,7 +109,6 @@ void initialState() {
   pinMode(CPU_BUSREQ, OUTPUT);
   pinMode(MEM_OE, OUTPUT);
 
-  //pinMode(CPU_BUSAK, INPUT);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
@@ -150,25 +152,6 @@ void loop() {
     else if (command.startsWith("ru")) {
       CommandRun();
     }
-    else if (command.startsWith("rom")) {
-      LoopVideoROM();
-    }
-    // else if (command.startsWith("spi")) {
-    //   preRun();
-    //   digitalWrite(SPI_SS, HIGH);
-    //   SPI.begin();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoopSpi, FALLING);
-    //   reset();
-    //   clockCount = 0;
-      
-    // }
-    // else if (command.startsWith("vi")) {
-    //   preRun();
-    //   attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockVideo, FALLING);
-    //   reset();
-    //   clockCount = 0;
-    //   addressCount = 0x8000; 
-    // }
     else if (command.startsWith("de")) {
       preRun();
       attachInterrupt(digitalPinToInterrupt(CLK_INPUT), clockDebug, RISING);
@@ -225,28 +208,6 @@ void commandStop() {
       pinMode(MEM_OE, OUTPUT);
       detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
       detachInterrupt(digitalPinToInterrupt(CPU_WR));
-      detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
-}
-
-
-
-void LoopVideoROM() {
-     digitalWrite(WRITE_AVAILABLE, LOW); // Desabilita a gravação (Invertido) 34 = C3 = B00000100
-     
-
-      for (size_t i = 0; i < 9600; i++)
-      {
-        uint16_t address = 0x8000 + i;
-        setRead();
-        uint8_t data = readEEPROM(0x0f80 + i);
-        bufb[1] = address & 0xff;
-        bufb[0] = (address >> 8);
-        bufb[2] = data;
-        // sprintf(buf, "%04x%02x",(0x0f80 + i), bufb[2]);
-        // Serial.println(buf);
-        Serial3.write(bufb, 3);
-      }
-      digitalWrite(WRITE_AVAILABLE, HIGH); 
 }
 
 void commandGo(String strCommand)
@@ -544,7 +505,7 @@ void clockDebug() {
     Serial.print("   "); 
   }
   //Serial.print(clockCount, 0);
-  sprintf(buf, " %s %04X %02X %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_IORQ) ? "     " : " IORQ");
+  sprintf(buf, "%04X %02X %s %s %s %s %s %s %s", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_IORQ) ? " IORQ" : "     ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH", digitalRead(CPU_HALT) ? "     " : " HALT");
   //sprintf(buf, " %s %04X %02X %s %s %s %s %s %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH",  digitalRead(CPU_IORQ) ? "     " : " IORQ", digitalRead(CPU_HALT) ? "     " : " HALT");
   //sprintf(buf, "%s %04x %02x ", digitalRead(MEM_WE) ? "R" : "W", address, data);
   Serial.println(buf);
@@ -575,28 +536,6 @@ void setRead() {
     pinMode(dataPin[pin], INPUT);
   }
 }
-
-void setReadFast() {
-  //digitalWrite(MEM_WE, HIGH); // L1
-  PORTL = PORTL | B00000010;
-  //digitalWrite(MEM_OE, LOW); // L0
-  PORTL = PORTL & (~B00000001);
-  // for (unsigned int pin = 0; pin < 8; pin+=1) {
-  //   pinMode(dataPin[pin], INPUT);
-  // }
-
-  DDRE = DDRE | B00010000; // 2    
-  DDRE = DDRE | B00001000; // 5
-  DDRE = DDRE | B00100000; // 3
-  DDRH = DDRH | B00100000; // 8
-  DDRH = DDRH | B01000000; // 9
-  DDRH = DDRH | B00010000; // 7
-  DDRH = DDRH | B00001000; // 6
-  DDRG = DDRG | B00100000; // 4
-}
-
-
-
 
 void setWrite() {
   digitalWrite(MEM_WE, HIGH);
@@ -637,40 +576,6 @@ void setAddress(int address) {
   }
 }
 
-void setAddressFast(int address) {
-  PORTC = (address & 1) == 1 ? PORTC | B00001000 : PORTC & (~B00001000); // 31 C3
-  address = address >> 1;
-  PORTC = (address & 1) == 1 ? PORTC | B10000000 : PORTC & (~B10000000); // 30 C7
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B10000000 : PORTC & (~B10000000); // 29 A7
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B01000000 : PORTC & (~B01000000); // 28 A6 
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00100000 : PORTC & (~B00100000); // 27 A5
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00010000 : PORTC & (~B00010000); // 26 A4
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00001000 : PORTC & (~B00001000); // 25 A3
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00000100 : PORTA & (~B00000100); // 24 A2
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00000010 : PORTA & (~B00000010); // 23 A1
-  address = address >> 1;
-  PORTA = (address & 1) == 1 ? PORTA | B00000001 : PORTA & (~B00000001); // 22 A0
-  address = address >> 1;
-  PORTH = (address & 1) == 1 ? PORTH | B00000001 : PORTH & (~B00000001); // 17 H0
-  address = address >> 1;
-  PORTH = (address & 1) == 1 ? PORTH | B00000010 : PORTH & (~B00000010); // 16 H1
-  address = address >> 1;
-  PORTB = (address & 1) == 1 ? PORTB | B10000000 : PORTB & (~B10000000); // 13 B7
-  address = address >> 1;
-  PORTB = (address & 1) == 1 ? PORTB | B01000000 : PORTB & (~B01000000); // 12 B6
-  address = address >> 1;
-  PORTB = (address & 1) == 1 ? PORTB | B00100000 : PORTB & (~B00100000); // 11 B5
-  address = address >> 1;
-  PORTB = (address & 1) == 1 ? PORTB | B00010000 : PORTB & (~B00010000); // 10 B4
-}
-
 
 uint8_t readEEPROM(int address) {
   setAddress(address);
@@ -679,20 +584,6 @@ uint8_t readEEPROM(int address) {
     data = (data << 1) + digitalRead(dataPin[pin]);
   }
   if (logData) Serial.println("read: " + (String)(data) + ", " + toBinary(data, 8));
-  return data;
-}
-
-uint8_t readEEPROMFast(int address) {
-  setAddressFast(address);
-  uint8_t data = 0;
-  data = (data << 1) + ((PINE & B00010000) == 0 ? 0 : 1); // 2 E4
-  data = (data << 1) + ((PINE & B00001000) == 0 ? 0 : 1); // 5 E3
-  data = (data << 1) + ((PINE & B00100000) == 0 ? 0 : 1); // 3 E5
-  data = (data << 1) + ((PINH & B00100000) == 0 ? 0 : 1); // 8 H5
-  data = (data << 1) + ((PINH & B01000000) == 0 ? 0 : 1); // 9 H6
-  data = (data << 1) + ((PINH & B00010000) == 0 ? 0 : 1); // 7 H4
-  data = (data << 1) + ((PINH & B00001000) == 0 ? 0 : 1); // 6 H3
-  data = (data << 1) + ((PING & B00100000) == 0 ? 0 : 1); // 4 G5
   return data;
 }
 
