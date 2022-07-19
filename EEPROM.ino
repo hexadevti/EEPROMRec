@@ -28,7 +28,7 @@ int CPU_BUSREQ = 26; // Valida o bus para seguir processamento
 int MEM_WE = 25; // Controla o Write Enable da EEPROM
 int CPU_RD = 24;
 
-const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
+const unsigned int dataPin[] = { 3, 2, 5, 8, 49, 7, 6, 4 };
 const unsigned int addressPin[] = { 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
 
 int CPU_MREQ = 22;
@@ -79,7 +79,7 @@ String command;
 bool mem_read = false;
 
 void setup() {
-  Serial.begin(250000); 
+  Serial.begin(1000000); 
   Serial3.begin(1000000);
   
   maxAddress = (int)pow(2, addressSize);
