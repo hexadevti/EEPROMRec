@@ -8,17 +8,6 @@
 // #include <Wire.h>
 #include <SPI.h>
 
-
-//Pinos Fixos
-int CLK_INPUT = 20; // Pino de interrupt de Clock
-int CPU_IORQ = 21; // Pino de interrupt de IORQ
-int CPU_WR = 18; // Pino Interrupt de Write Request
-int FREE_INTERRUPT = 21; // Pino Interrupt de Write Request
-int TX3 = 14; // Usado apesar de não referenciado em código
-int RX3 = 15; // Usado apesar de não referenciado em código
-int TX2 = 16; // Livre para uso
-int RX2 = 17; // Livre para uso
-
 int TIMER_ACTIVE = 31; // Ativa o Run - Botão central
 int CLK_DISABLE = 30; // Controla clock na placa de clock
 int WRITE_AVAILABLE = 29; //disponibiliza gravação na EEPROM
@@ -26,24 +15,26 @@ int CPU_RESET = 28; // Controla o Reset do processador
 int MEM_OE = 27; // Controla a leitura da memoria pelo gravador de EEPROM
 int CPU_BUSREQ = 26; // Valida o bus para seguir processamento
 int MEM_WE = 25; // Controla o Write Enable da EEPROM
-int CPU_RD = 24;
+int CPU_RD = 24; // Sensor Read
+int CPU_BUSAK = 23; // Sensor Bus Acknowledge
+int CPU_MREQ = 22; // Sensor DE Memory Request
+int CPU_IORQ = 19; // Pino de interrupt de IORQ
+int CLK_INPUT = 20; // Pino de interrupt de Clock
+int FREE_INTERRUPT = 21; // Pino Interrupt LIVRE
+int CPU_WR = 18; // Pino Interrupt de Write Request
+int CPU_RFSH = 17;
+int CPU_M1 = 16;
+//int RX2 = 17; // Livre para uso
+//int TX2 = 16; // Livre para uso
+int RX3 = 15; // SERIAL3 RX Usado apesar de não referenciado em código
+int TX3 = 14; // SERIAL3 TX Usado apesar de não referenciado em código
+int CPU_WAIT = 13; // Sensor CPU WAIT
+int CPU_HALT = 12; // Sensor HALT
 
-const unsigned int dataPin[] = { 3, 2, 5, 8, 49, 7, 6, 4 };
+
+const unsigned int dataPin[] = { 3, 2, 5, 8, 9, 7, 6, 4 };
 const unsigned int addressPin[] = { 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
 
-int CPU_MREQ = 22;
-int CPU_M1 = 16;
-int CPU_RFSH = 17;
-int CPU_HALT = 12;
-int CPU_BUSAK = 23;
-
-
-// int I2C_SDA = 20;
-// int I2C_SCL = 21;
-// int SPI_SS = 53;
-// int SPI_MISO = 50;
-// int SPI_MOSI = 51;
-// int SPI_SCK = 52;
 
 bool timerActive = false;
 int timerButtonPressCount = 0;
@@ -51,12 +42,12 @@ bool timerPreviousState = false;
 
 // Hello World 3e 00 ee 80 d3 ff 18 fa
 // Vai e vem 3e 80 d3 01 0f fe 01 28 02 18 f7 d3 01 07 fe 80 28 f0 18 f7
-// vai vem input 3E 80 D3 01 0F FE 01 28 08 DB 02 FE 01 28 02 18 F1 D3 01 07 FE 80 28 EA DB 02 FE 01 28 F3 18 F1
+// 3E FF D3 00 D3 01 D3 02 D3 03 18 F4
 
 
 int addressSize = 16;
-int currentAddress = 0;
-const unsigned int WCT = 10;
+int16_t currentAddress = 0;
+const unsigned int WCT = 7;
 int maxAddress = 0;
 const boolean logData = false;
 int size = 0;
@@ -66,20 +57,11 @@ volatile double clockCount = 0;
 char buf[100];
 volatile uint16_t addressCount = 0;
 uint8_t bufb[80];
-// tv out
-//https://www.youtube.com/watch?v=5sFxURFBmtA
-// esp 32 VGA
-// https://www.youtube.com/watch?v=qJ68fRff5_k
-// esp 8266
-// https://github.com/smaffer/espvgax2
 String command;
-
-//SPISettings settings(16000000, MSBFIRST, SPI_MODE0); 
-
 bool mem_read = false;
 
 void setup() {
-  Serial.begin(1000000); 
+  Serial.begin(500000); 
   Serial3.begin(1000000);
   
   maxAddress = (int)pow(2, addressSize);
@@ -109,15 +91,20 @@ void initialState() {
   pinMode(CPU_BUSREQ, OUTPUT);
   pinMode(MEM_OE, OUTPUT);
 
+  pinMode(CPU_WAIT, OUTPUT);
+
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, LOW);
   digitalWrite(CLK_DISABLE, HIGH);
   digitalWrite(CPU_RESET, HIGH);
   digitalWrite(CPU_BUSREQ, HIGH);
   digitalWrite(MEM_OE, HIGH);
+  digitalWrite(CPU_WAIT, HIGH);
+
 
   detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
   detachInterrupt(digitalPinToInterrupt(CPU_WR));
+  detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
   
   Serial.println("OK");
 }
@@ -128,22 +115,14 @@ void loop() {
     command = Serial.readStringUntil('\n');
     command.trim();
     command.toLowerCase();
-    if (command.startsWith("g ")) {
-      commandGo(command);
-    } else if (command.startsWith("c ")) {
+    if (command.startsWith("c ")) {
       commandClear(command);
     }
     else if (command.equals("l")) {
       commandRead("r");
       currentAddress = currentAddress+256;
-    } else if (command.equals("p ")) {
-      char buf[60];
-      sprintf(buf, "%04x", currentAddress);
-      Serial.println("");
-      Serial.print(buf);
-      Serial.println("");
-      Serial.println("OK");
-    } else if (command.startsWith("r ")) {
+    } 
+    else if (command.startsWith("r ")) {
       commandRead(command);
     } 
     else if (command.startsWith("w ")) {
@@ -152,20 +131,15 @@ void loop() {
     else if (command.startsWith("ru")) {
       CommandRun();
     }
+    else if (command.startsWith("in")) {
+      CommandInt();
+    }
     else if (command.startsWith("de")) {
       preRun();
       attachInterrupt(digitalPinToInterrupt(CLK_INPUT), clockDebug, RISING);
+      //attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockInt, CHANGE);
+      attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoop, FALLING);
       clockCount = 0;
-    }
-    else if (command.startsWith("re")) {
-      reset();
-    }
-    else if (command.startsWith("lo")) {
-      commandLoad(command);
-    }
-    else if (command.startsWith("in")) {
-      initialState();
-      reset();
     }
     else if (command.startsWith("st")) {
       commandStop();
@@ -197,6 +171,13 @@ void CommandRun() {
       reset();
 }
 
+void CommandInt() {
+      preRun();
+      attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoop, FALLING);
+      attachInterrupt(digitalPinToInterrupt(CPU_IORQ), clockInt, CHANGE);
+      reset();
+}
+
 void commandStop() {
   reset();
       for (int pin = 0; pin <= 15; pin+=1) {
@@ -208,6 +189,7 @@ void commandStop() {
       pinMode(MEM_OE, OUTPUT);
       detachInterrupt(digitalPinToInterrupt(CLK_INPUT));
       detachInterrupt(digitalPinToInterrupt(CPU_WR));
+      detachInterrupt(digitalPinToInterrupt(CPU_IORQ));
 }
 
 void commandGo(String strCommand)
@@ -329,7 +311,7 @@ void commandWrite(String strCommand)
 {
   unsigned int parmNo = 0;
   unsigned int address = 0;
-  unsigned int itemCount = 1;
+  unsigned int itemCount = 0;
   char buf[60];
 
   while (strCommand.length() > 0)
@@ -337,32 +319,38 @@ void commandWrite(String strCommand)
     int index = strCommand.indexOf(' ');
     String parm = strCommand.substring(0, index);
 
+
     if (parmNo == 1)
     {
       address = StrToDec(parm);
-      Serial.println();
-      sprintf(buf, "%04x: ", address);
-      Serial.print(buf);
     }
     else if (parmNo > 1)
     {
+      //Serial.println();Serial.print("parno: "); Serial.print(parmNo);Serial.print("strCommand: "); Serial.print(strCommand); Serial.println();
+      if (itemCount == 0)
+      {
+        //Serial.println();
+        sprintf(buf, "%04x: ", address + (parmNo - 2));
+        Serial.print(buf);
+      }
       int data = StrToDec(parm);
       writeByte(address + (parmNo - 2), data);
       sprintf(buf, "%02x ", data);
       Serial.print(buf);
 
-      if (itemCount == 8)
+      if (itemCount == 7)
       {
-        Serial.print("   ");
+        Serial.print("    ");
       }
-      if (itemCount == 16)
+      if (itemCount == 15)
       {
         Serial.println();
-        sprintf(buf, "%04x: ", address + (parmNo - 2));
-        Serial.print(buf);
         itemCount = 0;
       }
-      itemCount++;
+      else 
+      {
+        itemCount++;
+      }
 
       if (index == -1)
       {
@@ -373,36 +361,7 @@ void commandWrite(String strCommand)
     strCommand = strCommand.substring(index + 1);
     parmNo = parmNo + 1;
   }
-}
-
-void commandLoad(String command) {
-  unsigned int parmNo = 0;
-  unsigned int startAddress = 0;
-  unsigned int endAddress = 0;
-  int dat = 0;
-   
-  while (command.length() > 0)
-  {
-    int index = command.indexOf(' ');
-    String parm = command.substring(0, index);
-    if (parmNo == 1)
-    {
-      startAddress = StrToDec(parm);
-    }
-    if (parmNo == 2)
-    {
-      endAddress = StrToDec(parm);
-    }
-    if (parmNo == 3)
-    {
-      dat = StrToDec(parm);
-      streamData(startAddress, endAddress);
-      break;
-    }
-
-    command = command.substring(index + 1);
-    parmNo = parmNo + 1;
-  }
+  currentAddress = address;
 }
 
 int StrToDec(String parm) {
@@ -412,7 +371,28 @@ int StrToDec(String parm) {
   return (int) strtol(char_array, 0, 16);
 }
 
+bool IntRDBegan = false;
 
+void clockInt() {
+  
+      if (digitalRead(CPU_IORQ) && !digitalRead(CPU_RD)) {
+        Serial.println("Begin");
+        for (unsigned int pin = 0; pin < 8; pin+=1) {
+          pinMode(dataPin[pin], OUTPUT);
+        }
+        uint8_t data = writeData(B00001111);  
+        IntRDBegan = true;
+        
+      }
+      else if (!digitalRead(CPU_IORQ) && IntRDBegan) {
+        Serial.println("End");
+        for (unsigned int pin = 0; pin < 8; pin+=1) {
+          pinMode(dataPin[pin], INPUT);
+        }
+        IntRDBegan = false;
+      }
+
+}
 
 
 void clockLoop() {
@@ -424,50 +404,16 @@ void clockLoop() {
       bufb[1] = address & 0xff;
       bufb[0] = (address >> 8);
       bufb[2] = data;
-      //Serial.write(bufb, 3);
-      //sprintf(buf, "%04x%02x", address, data);
-      //sprintf(buf, "%02x%02x%02x",bufb[0], bufb[1], bufb[2]);
-    	//Serial.println(buf);
+      // if (address >= 0x8000 && address <= 0x80ff) {
+      //   //Serial.write(bufb, 3);
+      //   sprintf(buf, "%04x%02x", address, data);
+      //   //sprintf(buf, "%02x%02x%02x",bufb[0], bufb[1], bufb[2]);
+      //   Serial.println(buf);
+      // }
       Serial3.write(bufb, 3);
     }
     digitalWrite(CPU_BUSREQ, HIGH);
 }
-
-// int countScreen = 0;
-// int countAddress = 0;
-
-// void clockLoopSpi() {
-//     digitalWrite(SPI_SS, LOW);
-//     uint16_t address = readAddress();
-//     // uint16_t address = 0x8000 + countAddress; 
-//     // if (address == 0x8000) countScreen = countScreen + 1;
-//     uint8_t data = readData();
-//     bufb[1] = address & 0xff;
-//     bufb[0] = (address >> 8);
-//     bufb[2] = data;
-//     SPI.beginTransaction(settings);
-//     SPI.transfer(bufb, 3);
-//     SPI.endTransaction();  
-//     digitalWrite(SPI_SS, HIGH);
-//     // countAddress++;
-//     // if (countAddress > 0x2580) 
-//     //   countAddress = 0; 
-// }
-
-
-
-// void clockVideo() {
-//    uint8_t data = readData();
-//     //uint16_t address = readAddressBits(8);
-    
-// //    if (address == 0x2 && data != dataant) {
-//     //Serial.print(clockCount, 0);
-//     sprintf(buf, "%04x%02x",addressCount, data);
-//     Serial.println(buf);
-//     addressCount++;
-// //    dataant = data;
-// //    }
-// }
 
 void preRun() {
       for (int pin = 0; pin <= 15; pin+=1) {
@@ -497,22 +443,20 @@ void reset() {
 void clockDebug() {
   uint16_t address = readAddress();
   uint8_t data = readData();
-
-  if (logData) {
-    Serial.print((String)toBinary(address, 16));
-    Serial.print("   ");
-    Serial.print((String)toBinary(data, 8));
-    Serial.print("   "); 
-  }
   //Serial.print(clockCount, 0);
-  sprintf(buf, "%04X %02X %s %s %s %s %s %s %s", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_IORQ) ? " IORQ" : "     ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH", digitalRead(CPU_HALT) ? "     " : " HALT");
-  //sprintf(buf, " %s %04X %02X %s %s %s %s %s %s %s", digitalRead(MEM_WE) ? "R" : "W", address, data, digitalRead(MEM_WE) ? "   " : " WR", digitalRead(CPU_MREQ) ? "     " : " MREQ", digitalRead(CPU_RD) ? "   " : " RD", digitalRead(CPU_M1) ? "   " : " M1", digitalRead(CPU_RFSH) ? "     " : " RFSH",  digitalRead(CPU_IORQ) ? "     " : " IORQ", digitalRead(CPU_HALT) ? "     " : " HALT");
-  //sprintf(buf, "%s %04x %02x ", digitalRead(MEM_WE) ? "R" : "W", address, data);
+  sprintf(buf, "%04X %02X %s %s %s %s %s %s %s %s", address, data, digitalRead(MEM_WE) ? "   " : " WR",
+                                                                 digitalRead(CPU_MREQ) ? "     " : " MREQ", 
+                                                                 digitalRead(CPU_IORQ) ? "     " : " IORQ", 
+                                                                 digitalRead(CPU_RD) ? "   " : " RD", 
+                                                                 digitalRead(CPU_M1) ? "   " : " M1", 
+                                                                 digitalRead(CPU_RFSH) ? "     " : " RFSH",
+                                                                 digitalRead(CPU_BUSAK) ? "     " : " BUSAK", 
+                                                                 digitalRead(CPU_WAIT) ? "     " : " WAIT", 
+                                                                 digitalRead(CPU_HALT) ? "     " : " HALT");
   Serial.println(buf);
   if (!digitalRead(MEM_WE) && address >= 0x8000 && address < 0xa580) {
-      // sprintf(buf, "%04x%02x", address, data);
-      // Serial.println(buf);
-      // uint8_t data = readData();
+      sprintf(buf, "%04x %02x", address, data);
+      Serial.println(buf);
       bufb[1] = address & 0xff;
       bufb[0] = (address >> 8);
       bufb[2] = data;
@@ -520,11 +464,6 @@ void clockDebug() {
     }
   clockCount++;
 }
-
-void clockCycleCount() {
-  clockCount++;
-}
-
 
 void setRead() {
   //digitalWrite(LED_BUILTIN, HIGH);
@@ -642,19 +581,6 @@ void erase(unsigned int startAddress, unsigned int endAddress, uint8_t data) {
   setStandby();
 }
 
-void streamData(unsigned int startAddress, unsigned int endAddress) {
-  setRead();
-  for (unsigned int address = startAddress; address <= endAddress; address += 1) {
-    uint8_t data = readEEPROM(address);
-    //Serial.write(address);
-
-    // char buf2[6];
-    // sprintf(buf2, "%04x%02x",address, data);
-    //Serial.println(buf2);
-  }
-  setStandby();
-}
-
 void writeByte(unsigned int startAddress, byte data) {
   setWrite();
   writeEEPROM(startAddress, data);
@@ -710,5 +636,17 @@ uint8_t readData() {
   }
   //if (logData) Serial.println("readData: " + (String)(data) + ", " + toBinary(data, 8));
   return data;
+}
+
+uint8_t writeData(uint8_t data) {
+  uint8_t retData = data;
+  
+  for (int pin = 0; pin <= 7; pin += 1) {
+    digitalWrite(dataPin[pin], data & 1);
+    if (logData) Serial.println("digitalWrite(" + (String)(dataPin[pin]) + "," + ((data & 1) == 1 ? "HIGH" : "LOW" ) + ")");
+    data = data >> 1;
+  }
+  
+  return retData;
 }
 
