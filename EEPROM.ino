@@ -42,7 +42,6 @@ bool timerPreviousState = false;
 
 // Hello World 3e 00 ee 80 d3 ff 18 fa
 // Vai e vem 3e 80 d3 01 0f fe 01 28 02 18 f7 d3 01 07 fe 80 28 f0 18 f7
-// 3E FF D3 00 D3 01 D3 02 D3 03 18 F4
 
 
 int addressSize = 16;
@@ -61,7 +60,7 @@ String command;
 bool mem_read = false;
 
 void setup() {
-  Serial.begin(500000); 
+  Serial.begin(250000); 
   Serial3.begin(1000000);
   
   maxAddress = (int)pow(2, addressSize);
@@ -167,7 +166,7 @@ void loop() {
 
 void CommandRun() {
       preRun();
-      attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoop, FALLING);
+      //attachInterrupt(digitalPinToInterrupt(CPU_WR), clockLoop, FALLING);
       reset();
 }
 
@@ -467,6 +466,7 @@ void clockDebug() {
 
 void setRead() {
   //digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(CPU_BUSREQ, LOW);
   digitalWrite(MEM_WE, HIGH);
   pinMode(MEM_OE, OUTPUT);
   digitalWrite(MEM_OE, LOW);
@@ -477,6 +477,7 @@ void setRead() {
 }
 
 void setWrite() {
+  digitalWrite(CPU_BUSREQ, LOW);
   digitalWrite(MEM_WE, HIGH);
   digitalWrite(WRITE_AVAILABLE, HIGH);
   pinMode(MEM_OE, OUTPUT);
@@ -489,6 +490,7 @@ void setWrite() {
 
 void setStandby() {
   digitalWrite(WRITE_AVAILABLE, LOW);
+  digitalWrite(CPU_BUSREQ, HIGH);
   // digitalWrite(WE, HIGH);
   // //digitalWrite(CE, HIGH);
   // digitalWrite(OE, HIGH);
